@@ -1,33 +1,27 @@
 @echo off
 setlocal
-cd /d "%~dp0"
-if not defined UE_ROOT set "UE_ROOT=D:\UE\UE_5.8"
-if not exist .venv\Scripts\python.exe python -m venv .venv
-if errorlevel 1 goto failed
-set "REQUIREMENTS=requirements.txt"
-if exist requirements.lock.txt set "REQUIREMENTS=requirements.lock.txt"
-.venv\Scripts\python.exe -m pip install -r "%REQUIREMENTS%"
-if errorlevel 1 goto failed
-.venv\Scripts\python.exe tools\extract_models.py --engine "%UE_ROOT%"
-if errorlevel 1 goto failed
-.venv\Scripts\python.exe tools\extract_skeleton.py --engine "%UE_ROOT%"
-if errorlevel 1 goto failed
-call tools\build_fbx.bat
-if errorlevel 1 goto failed
-.venv\Scripts\python.exe -m unittest discover -s tests -v
-if errorlevel 1 goto failed
-call tools\build_skeleton.bat
-if errorlevel 1 goto failed
-call tools\build_retarget.bat
-if errorlevel 1 goto failed
-.venv\Scripts\python.exe -m unittest discover -s tests -v
-if errorlevel 1 goto failed
-.venv\Scripts\python.exe -m tools.setup_detection
-if errorlevel 1 goto failed
-echo Setup complete. LaunchStandalone.bat opens the tool.
-pause
-exit /b 0
-:failed
-echo Setup failed. See the error above.
-pause
-exit /b 1
+pushd "%~dp0"
+set "PYTHONUTF8=1"
+if defined M2A_PYTHON goto custom
+py -3.13 -c "import sys" >nul 2>&1
+if not errorlevel 1 (
+  py -3.13 tools\bootstrap_setup.py %*
+  goto finish
+)
+python -c "import sys" >nul 2>&1
+if errorlevel 1 (
+  echo Python 3.13 x64 is required. Install it from https://www.python.org/downloads/windows/
+  set "RESULT=1"
+  goto done
+)
+python tools\bootstrap_setup.py %*
+goto finish
+:custom
+"%M2A_PYTHON%" tools\bootstrap_setup.py %*
+:finish
+set "RESULT=%ERRORLEVEL%"
+:done
+if not "%RESULT%"=="0" echo Setup failed. Existing models and runs were preserved. See the error above.
+if not defined M2A_SETUP_NO_PAUSE pause
+popd
+exit /b %RESULT%

@@ -40,7 +40,7 @@ FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモ�
 
 人物検出モデルは `SetupPersonDetection.bat` で公式YOLOX-S ONNXを取得できます（通常実行はオフライン）。このPCでは設定済みです。
 
-骨格の再設定（初回または別PC）は次を実行してください。
+同梱骨格を別の基準FBXへ差し替える場合だけ、セットアップ後に次を実行してください。
 
 ```powershell
 tools\build_skeleton.bat
@@ -94,16 +94,89 @@ ROI内に他の人物が大きく入る場面や遮蔽では、手足が混ざ�
 ROI座標は、回転後かつ高さ896px以下へ縮小した動画のピクセル座標です。GUIのROI選択では自動的にその画像を使います。
 12フレーム以上に対応します。固定600フレーム制限はありません。動画の画像は一括保持せず、時間方向の推論を窓に分割します。動画のVFRタイムスタンプ補正は未実装で、OpenCVが返すfpsに従います。
 
-## 初期セットアップの再現
+## リポジトリ取得後のセットアップ（Windows）
 
-Python 3.13、Visual Studio C++ツール、ローカルUE 5.8とMetaHumanBodyTracker 1.0.0が必要です。
-`SetupStandalone.bat` が専用venv、依存パッケージ、モデル、骨格データ、FBX helperを作ります。
+このリポジトリにはコードと**Quinnの基準骨格**を含めています。巨大な推論モデル、Python仮想環境、生成動画、実行結果、ビルド済みDLL/EXEは含めません。
+通常実行ではUEを起動しません。初回のモデル抽出とFBX補助プログラムのビルドにUEのファイルを利用します。
 
-- UE既定パス: `D:\UE\UE_5.8`。変更時は環境変数 `UE_ROOT` を設定します。
-- Visual Studioのvcvars64.batを変更する場合は `VS_VCVARS` を設定します。
-- ONNX外部重みは元アセットから抽出し、標準の外部データ参照へ変換します。
-- モデル、SDK DLL、生成アニメーション、venvはGit管理外です。
-- `.venv` はPC間でコピーせず再作成してください。抽出済みmodelsとbinが揃えば通常実行にUEのインストール場所を参照しません。
+### 最初に用意するもの
+
+1. Windows x64 と [Python 3.13 x64](https://www.python.org/downloads/windows/)。公式インストーラのPython Launcher、pip、Tcl/Tkを含めてインストールします。
+2. Visual StudioまたはBuild Toolsの **「C++によるデスクトップ開発」**。MSVC x64コンパイラとWindows SDKが必要です。セットアップが `vswhere.exe` で自動検出します。
+3. **Unreal Engine 5.8**。この実装で検証した版は5.8.2です。
+4. Fabの [MetaHuman Animator Markerless Motion Capture Plugin](https://www.fab.com/listings/4095b8e0-3eff-44f1-acb4-cb40b99228b9) をそのUEにインストールします。検証済みプラグイン版は1.0.0です。通常のMetaHumanプラグインだけでは必要なモデルが揃いません。
+5. 初回のPyPIパッケージとYOLOX取得にインターネット接続。UEを除き、セットアップ中はモデルの抽出用バックアップも含め**15GB以上の空き容量**を目安にしてください。動画出力領域は別途必要です。
+
+選択するUEフォルダの下に、次が必要です。セットアップはこれらを**変更前に検査**し、不足しているパスを表示します。FBXヘッダ・ライブラリがないUEインストールでは、エンジンソース／依存ファイルを含むUE環境を用意してください。
+
+```text
+<UE>/Engine/Plugins/Marketplace/MetaHumanBodyTracker_5.8/Content/Models/Offline/*.uasset
+<UE>/Engine/Plugins/Marketplace/MetaHumanBodyTracker_5.8/Content/SMPLX_NEUTRAL_2020_locked_head_array_f32.uasset
+<UE>/Engine/Source/ThirdParty/FBX/2020.2/include/fbxsdk.h
+<UE>/Engine/Source/ThirdParty/FBX/2020.2/lib/vs2017/x64/release/libfbxsdk.lib
+<UE>/Engine/Binaries/ThirdParty/FBX/2020.2/Win64/libfbxsdk.dll
+```
+
+モデル抽出は上記バージョンの未Cookアセット形式に対応しています。他のUE／プラグイン版への互換性は保証していません。
+
+### 実行
+
+1. リポジトリを任意の書き込み可能なフォルダに取得します。
+2. **`SetupStandalone.bat` をダブルクリック**します。
+3. フォルダ選択画面で、`Engine` フォルダを含むUE 5.8のルートを選びます。`Engine` 自体を選んだ場合も認識します。
+4. 自動で以下を行います。
+   - Python 3.13 x64を確認し、リポジトリ専用 `.venv` を作成。
+   - `requirements.lock.txt` の固定バージョンを `.venv` にインストール。
+   - 選択したUEから7個の姿勢推定ONNX、外部重み、SMPL-X骨格を抽出。
+   - Visual Studioを検出し、3個のFBX補助EXEをビルド。必要なFBX DLLをコピー。
+   - 公式YOLOX-S ONNXをダウンロードしてSHA256を照合。
+   - 同梱Quinn骨格を使って変換・FBX往復テストを実行。
+5. `Setup complete` と出れば完了です。`DropVideoToQuinnFBX.bat` に動画をドロップしてください。GUIは `LaunchStandalone.bat` です。
+
+**同梱Quinnを使う限り、別途FBXを探す必要はありません。** `models/quinn_skeleton.txt` がない場合だけ、エクスポート済みQuinn FBXの選択画面を出します。別の基準FBXを明示的に指定するときは、以下の `--quinn` を使用します。
+
+```bat
+SetupStandalone.bat --engine "D:\UE\UE_5.8" --noninteractive
+SetupStandalone.bat --engine "D:\UE\UE_5.8" --quinn "D:\Assets\SKM_Quinn_Simple.FBX" --noninteractive
+SetupStandalone.bat --engine "D:\UE\UE_5.8" --check-only --noninteractive
+```
+
+`--check-only` は前提ファイルと開発環境の読み取り検査のみです。UE未指定ならGUI選択、環境変数 `UE_ROOT` 指定済みならその値を使用します。Pythonの選択を固定する場合は `M2A_PYTHON` にPython 3.13の実行ファイル、VSを指定する場合は `VS_VCVARS` に `vcvars64.bat` の絶対パスを設定します。無人実行では `M2A_SETUP_NO_PAUSE=1` にするとBAT末尾のキー待ちを省略します。
+
+### 調達元と配置先
+
+手作業でモデルを配置する必要はありません。対応関係は以下です。
+
+| 必要なもの | 調達元／生成方法 | リポジトリ内の配置先 | Git同梱 |
+| --- | --- | --- | --- |
+| Quinn基準姿勢FBX（骨だけ・89本） | 検証用 `SKM_Quinn_Simple.FBX` から抽出済み | `QuinnSkeleton.fbx` | **あり** |
+| Quinn骨名・階層・基準変換と由来 | 上記FBXの抽出データ | `models/quinn_skeleton.txt`, `models/quinn_manifest.json` | **あり** |
+| カメラ校正モデル | UEプラグインの `Content/Models/Offline/camera_calib.uasset` | `models/camera_calib.onnx` | なし |
+| CHMR画像特徴・人物特徴モデル | 同ディレクトリの `chmr_backbone.uasset`, `chmr_head.uasset` | `models/chmr_backbone.onnx`, `models/chmr_head.onnx` | なし |
+| Hue動画モーションモデル | 同ディレクトリの `hue_step_simplified.uasset`, `hue_finalStep_simplified.uasset` | `models/hue_step_simplified.onnx`, `models/hue_finalStep_simplified.onnx` | なし |
+| ViTPoseと後処理モデル | 同ディレクトリの `ViTPose.uasset`, `ViTPosePost.uasset` | `models/ViTPose.onnx`, `models/ViTPosePost.onnx` | なし |
+| ViTPose外部重み（約2.55GB） | `ViTPose.uasset` の追加データから抽出 | `models/OnnxExternalDataBytes`, `models/OnnxExternalDataDescriptor` | なし |
+| SMPL-Xの55関節と体型差分 | プラグイン直下Contentの `SMPLX_NEUTRAL_2020_locked_head_array_f32.uasset` から計算 | `models/skeleton.npz`, `models/skeleton_manifest.json` | なし |
+| 抽出済みモデルの由来・ハッシュ | `tools/extract_models.py` が生成 | `models/manifest.json` | なし |
+| YOLOX-S人物検出モデル | [Megvii公式ONNX配布](https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx) | `models/yolox_s.onnx`, `models/yolox_manifest.json` | なし |
+| FBX書き出し・骨格抽出EXE | `native/*.cpp` を選択UEのFBX SDKでビルド | `bin/fbx_export.exe`, `bin/fbx_skeleton.exe`, `bin/fbx_retarget.exe` | なし |
+| FBXランタイム | 選択UEの `Engine/Binaries/ThirdParty/FBX/2020.2/Win64/libfbxsdk.dll` | `bin/libfbxsdk.dll` | なし |
+| Python依存 | PyPI、`requirements.lock.txt` に固定 | `.venv/` | なし |
+
+YOLOXのSHA256は `tools/setup_detection.py` に固定しています。UEモデルのSHA256は抽出時に記録します。CHMR/Hueを同名の一般公開モデルに置き換えることはできません。上記プラグインのアセットが必要です。
+
+Quinnの元データを別途用意する場合、検証UEには `Templates/TemplateResources/High/Characters/Content/Mannequins/Meshes/SKM_Quinn_Simple.uasset` があります。UEのThird Personテンプレート等でQuinnを開き、Content BrowserのAsset Actions → ExportでFBXに書き出します。この手動作業は同梱骨格を使う場合は不要です。`quinn_manifest.json` の元ファイルパスは由来の記録であり、そのPCパスへのアクセスは通常実行に必要ありません。
+
+### 再実行・データ保持・Git
+
+- 既存 `.venv` は再利用します。Python版が異なる場合は削除せずエラーにします。
+- モデル一式が揃っている場合はハッシュ検証して再利用します。新規抽出は `work/setup_models_*` に行い、検証後に `models/` へ配置します。既存の異なるファイルを黙って上書きしません。
+- 抽出時のバックアップは `work/setup_models_*` に残します。容量が必要ならセットアップ成功後に利用者が整理できます。
+- 明示的にQuinnを差し替える場合、元の骨格データは `work/quinn_backup_*` に残します。
+- `runs/`, `work/`, `.venv/`, `bin/`, 大きなモデル／中間ファイルは `.gitignore` で除外します。**Quinnの小さな3ファイルだけ例外として同梱**します。
+- Gitから除外しても実ファイルは消しません。推論の再実行に必要なモデルはローカルに残ります。
+- Git履歴の書き換えは行いません。すでに他のブランチ／過去コミットへ巨大ファイルを入れた別リポジトリでは、追跡解除だけで過去履歴のサイズが減るわけではありません。
+- `OpenValidation.bat` が参照する過去の検証動画・結果は同梱しません。新規取得したPCは自身の動画で検証してください。
 
 ## 実装範囲
 

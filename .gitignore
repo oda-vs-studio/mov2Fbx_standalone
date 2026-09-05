@@ -1,13 +1,57 @@
+# Local environments and caches
 .venv/
-models/
-bin/
-runs/
-work/
+venv/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Downloaded/extracted models and generated runtime binaries
+/models/*
+/bin/
+*.onnx
+*.onnx.data
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.uasset
+*.ubulk
+*.uexp
+OnnxExternalData*
+
+# Inference output, setup staging, diagnostics and media
+/runs/
+/work/
+/outputs/
+/logs/
+*.npz
+*.npy
+*.fbx
+*.FBX
+*.bvh
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.log
+*.part
+
+# Native build products
 *.obj
 *.pdb
 *.exp
 *.lib
+*.dll
+*.exe
+/build/
+/dist/
+*.egg-info/
 
-QuinnSkeleton.fbx
+# Small bundled Quinn reference assets required for retargeting
+!/QuinnSkeleton.fbx
+!/models/quinn_skeleton.txt
+!/models/quinn_manifest.json
+
