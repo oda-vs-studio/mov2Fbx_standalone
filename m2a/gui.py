@@ -122,8 +122,8 @@ class App:
     def begin(self):
         try:
             start,end = int(self.start.get()),int(self.end.get())
-            if not 12 <= end-start+1 <= 600 or start < 0:
-                raise ValueError('Choose 12–600 frames with a nonnegative start.')
+            if end-start+1 < 12 or start < 0:
+                raise ValueError('Choose at least 12 frames with a nonnegative start.')
             if not Path(self.video.get()).is_file():
                 raise ValueError('Choose an existing video.')
             output = Path(self.output.get()).resolve()

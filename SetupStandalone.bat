@@ -22,6 +22,8 @@ call tools\build_retarget.bat
 if errorlevel 1 goto failed
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 if errorlevel 1 goto failed
+.venv\Scripts\python.exe -m tools.setup_detection
+if errorlevel 1 goto failed
 echo Setup complete. LaunchStandalone.bat opens the tool.
 pause
 exit /b 0

@@ -11,7 +11,7 @@ from tools.extract_models import extract
 
 class GeometryTests(unittest.TestCase):
     def test_temporal_boundaries_have_no_missing_or_duplicate_frames(self):
-        for n in [12,16,124,259,260,261,276,277,278,298,299,416,417,600]:
+        for n in [12,16,124,259,260,261,276,277,278,298,299,416,417,600,619,1200,10000]:
             retained = []
             for offset,count,ml_start,ml_count,start,end in temporal_windows(n):
                 self.assertGreater(ml_count,0)

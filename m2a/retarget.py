@@ -61,7 +61,7 @@ def mapping():
     return pairs
 
 
-def retarget_arrays(source_local, source_root, source_offsets, target):
+def retarget_arrays(source_local, source_root, source_offsets, target, translation_scale=None, floor_mode="global_min"):
     names, parents, rest, rest_r = (target[k] for k in ['names','parents','pos','rot'])
     index = {n:i for i,n in enumerate(names)}
     pairs = {index[n]:NAMES.index(s) for n,s in mapping().items() if n in index}
@@ -115,6 +115,8 @@ def retarget_arrays(source_local, source_root, source_offsets, target):
     world_t, world_r = np.zeros_like(local_t), np.zeros_like(local_r)
     target_leg = sum(np.linalg.norm(rest[index[b]]-rest[index[a]]) for a,b in [('thigh_l','calf_l'),('calf_l','foot_l')])
     scale = target_leg / (np.linalg.norm(source_offsets[4])+np.linalg.norm(source_offsets[7]))
+    if translation_scale is not None:
+        scale = float(translation_scale)
     hip_world = (source_root @ basis.T)*scale
     for i,p in enumerate(parents):
         if i == index['root']:
@@ -127,7 +129,7 @@ def retarget_arrays(source_local, source_root, source_offsets, target):
         world_r[:,i] = world_r[:,p] @ local_r[:,i] if p>=0 else local_r[:,i]
         world_t[:,i] = world_t[:,p]+np.einsum('fij,fj->fi',world_r[:,p],local_t[:,i]) if p>=0 else local_t[:,i]
     # One constant floor adjustment retains jumps. No foot locking or IK solve.
-    floor = world_t[:,[index[x] for x in ['foot_l','foot_r','ball_l','ball_r']],1].min()
+    floor = world_t[:,[index[x] for x in ['foot_l','foot_r','ball_l','ball_r']],1].min() if floor_mode == 'global_min' else 0.
     pi=index['pelvis']; p=parents[pi]
     local_t[:,pi] -= np.einsum('fij,j->fi',np.swapaxes(world_r[:,p],-1,-2),[0,floor,0])
     followers={'ik_foot_l':'foot_l','ik_foot_r':'foot_r','ik_hand_gun':'hand_r',

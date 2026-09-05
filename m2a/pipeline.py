@@ -11,39 +11,7 @@ from .geometry import adjusted_size, preprocess, hue_inputs, temporal_windows
 PROMPT_IDS = [0,2,1,6,8,10,5,7,9,12,14,16,11,13,15,17,19,20,22]
 
 
-def read_frames(video, start, end, rotation):
-    cap = cv2.VideoCapture(str(video))
-    if not cap.isOpened():
-        raise ValueError(f'Cannot decode video: {video}')
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    if not np.isfinite(fps) or fps <= 0:
-        cap.release()
-        raise ValueError('Invalid video FPS')
-    end = count-1 if end is None else end
-    if not 0 <= start <= end < count:
-        cap.release()
-        raise ValueError(f'Frame range must be inside 0..{count-1}')
-    if end-start+1 > 600:
-        cap.release()
-        raise ValueError('This prototype accepts at most 600 frames per run; choose a shorter range')
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start)
-    frames = []
-    try:
-        for _ in range(start, end+1):
-            ok, frame = cap.read()
-            if not ok:
-                raise ValueError('Video decode ended before requested range')
-            if rotation:
-                frame = np.ascontiguousarray(np.rot90(frame, -(rotation//90)))
-            # Store adjusted raster to bound RAM. Original frame numbers/FPS are retained.
-            size = adjusted_size(frame)
-            if (frame.shape[1], frame.shape[0]) != tuple(size):
-                frame = cv2.resize(frame, tuple(size), interpolation=cv2.INTER_AREA)
-            frames.append(frame)
-    finally:
-        cap.release()
-    return frames, fps
+from .video import read_frames
 
 
 def calibrate(frame, models, provider):
@@ -63,7 +31,7 @@ def calibrate(frame, models, provider):
     return float(result[0]*scale), float(result[1]), float(result[2])
 
 
-def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provider='cpu', focal=None, height=0., seed=42, log=print, cancel=lambda:False, camera=None):
+def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provider='cpu', focal=None, height=0., seed=42, log=print, cancel=lambda:False, camera=None, track_boxes=None):
     began = time.perf_counter()
     output = Path(output)
     if output.exists():
@@ -79,11 +47,12 @@ def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provid
     if n < 12:
         raise ValueError('Use at least 12 frames for temporal inference')
     wh = adjusted_size(frames[0])
-    if any(frame.shape != frames[0].shape for frame in frames):
-        raise ValueError('Video resolution changed')
     box = np.array([0,0,*wh] if roi is None else roi, dtype=np.float32)
-    if not (0 <= box[0] < box[2] <= wh[0] and 0 <= box[1] < box[3] <= wh[1]):
-        raise ValueError(f'ROI must fit adjusted video raster {wh.tolist()}')
+    boxes = np.repeat(box[None], n, axis=0) if track_boxes is None else np.asarray(track_boxes,dtype=np.float32)
+    if boxes.shape != (n,4) or not np.isfinite(boxes).all():
+        raise ValueError('Tracking boxes must contain one valid box per frame')
+    if not ((boxes[:,:2]>=0).all() and (boxes[:,2:]<=wh).all() and (boxes[:,2:]>boxes[:,:2]).all()):
+        raise ValueError('ROI must fit the adjusted video raster')
     pitch = roll = 0.
     if camera is not None:
         focal,pitch,roll = camera
@@ -99,7 +68,7 @@ def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provid
     keypoints = []
     for i, frame in enumerate(frames):
         progress(f'2D pose {i+1}/{n}')
-        tensor, scale, offset = preprocess(frame, (192,256), box, .5)
+        tensor, scale, offset = preprocess(frame, (192,256), boxes[i], .5)
         points = post(pose_model(tensor)[0])[0].reshape(133,3)
         points[:, :2] = points[:, :2] * (np.array([192,256])*scale).astype(int) / [47,63] + offset
         keypoints.append(points)
@@ -111,7 +80,7 @@ def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provid
     if not writer.isOpened():
         raise RuntimeError('Cannot create keypoint diagnostic video')
     try:
-        for frame,points in zip(frames,keypoints):
+        for frame,points,box in zip(frames,keypoints,boxes):
             overlay = frame.copy()
             cv2.rectangle(overlay,tuple(box[:2].astype(int)),tuple(box[2:].astype(int)),(255,180,0),2)
             for x,y,confidence in points[:23]:
@@ -134,14 +103,13 @@ def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provid
         prompts = keypoints[i,PROMPT_IDS].copy()
         prompts[:,:2] = (prompts[:,:2]-offset)/scale/896
         prompts[:,2] = prompts[:,2] > .7
-        boxes = np.r_[((box.reshape(2,2)-offset)/scale/896).reshape(-1), 1][None]
+        prompt_box = np.r_[((boxes[i].reshape(2,2)-offset)/scale/896).reshape(-1), 1][None]
         f_inv = float(wh.max())/focal
         kinv = np.array([[f_inv,0,-.5*f_inv],[0,f_inv,-.5*f_inv],[0,0,1]])[None]
-        tokens.append(head(backbone(tensor)[0], kinv, boxes, prompts[None])[0][0,[0,1,2,3,5]])
+        tokens.append(head(backbone(tensor)[0], kinv, prompt_box, prompts[None])[0][0,[0,1,2,3,5]])
     del backbone, head, frames
     gc.collect()
     tokens = np.array(tokens)
-    boxes = np.repeat(box[None], n, axis=0)
     np.savez_compressed(output/'features.npz', keypoints=keypoints, tokens=tokens, boxes=boxes, focal=focal, size=wh, fps=fps)
     # UE's overlap geometry: 17 smoothing + 4 extra + 32 context frames each side.
     # Process the full sequence in bounded windows with the same retained core ranges.
@@ -178,7 +146,7 @@ def solve(video, output, models, start=0, end=None, rotation=0, roi=None, provid
     if len(pose) != n:
         raise RuntimeError(f'Output frame mismatch: {len(pose)} != {n}')
     np.savez_compressed(output/'motion.npz', poses=pose, betas=betas, translations=trans, contact_logits=contact, fps=fps)
-    metadata = dict(video=str(Path(video).resolve()),start_frame=start,end_frame_inclusive=start+n-1,fps=fps,frames=n,rotation=rotation,roi=box.tolist(),focal_px=focal,camera_pitch=pitch,camera_roll=roll,provider=provider,seed=seed,body_height_cm=height,seconds=time.perf_counter()-began,coordinate_system='raw Hue output; before UE camera/ground finalize',limitations=['Explicit static ROI; no Detectron2/SAM2','No UE body optimizer/foot locking','No Manny IK retargeting','Camera estimated on first selected frame','NumPy RNG and OpenCV interpolation differ from UE'])
+    metadata = dict(video=str(Path(video).resolve()),start_frame=start,end_frame_inclusive=start+n-1,fps=fps,frames=n,rotation=rotation,roi=boxes[0].tolist(),roi_mode='tracked' if track_boxes is not None else 'static',focal_px=focal,camera_pitch=pitch,camera_roll=roll,provider=provider,seed=seed,body_height_cm=height,seconds=time.perf_counter()-began,coordinate_system='raw Hue output; before UE camera/ground finalize',limitations=['Tracked ROI; no mask isolation during overlap' if track_boxes is not None else 'Explicit static ROI; no Detectron2/SAM2','No UE body optimizer/foot locking','No Manny IK retargeting','Camera estimated on first selected frame','NumPy RNG and OpenCV interpolation differ from UE'])
     (output/'metadata.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
     progress(f'Pose inference complete: {output}')
     return output

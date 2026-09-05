@@ -20,7 +20,7 @@ def forward_kinematics(rotations, root, offsets):
     return world
 
 
-def prepare(motion, skeleton, metadata):
+def prepare(motion, skeleton, metadata, center=True):
     pose = motion['poses'].reshape(-1,55,3).copy()
     betas = motion['betas'].mean(axis=0)
     joints = skeleton['joints'] + np.einsum('jck,k->jc',skeleton['shape_deltas'],betas)
@@ -34,6 +34,8 @@ def prepare(motion, skeleton, metadata):
     rotations = Rotation.from_rotvec(pose.reshape(-1,3))
     world = forward_kinematics(rotations,root,offsets)
     # Keep jumps and translation; place lowest foot/ankle joint on floor globally.
+    if not center:
+        return rotations, root, offsets, world
     floor = float(world[:,[7,8,10,11],1].min())
     origin = np.array([root[0,0],floor,root[0,2]])
     root -= origin

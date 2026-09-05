@@ -5,7 +5,7 @@ pushd "%~dp0"
 if "%~1"=="" (
   echo Drop one or more videos onto this BAT.
   echo Output: same folder and filename as video, with .fbx extension.
-  echo Single actor; 12 to 600 frames. Existing FBX files are not overwritten.
+  echo Auto 1/2 people; shared positions; initial feet planted; 12+ frames; full length. Existing FBX files are not overwritten.
   pause
   popd
   exit /b 1
