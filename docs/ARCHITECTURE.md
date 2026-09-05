@@ -17,7 +17,7 @@ The port follows the installed Epic implementation under:
 - `MetaHumanBodyTracker/Private/Nodes/OfflineBodyTrackerNode.cpp`: camera orientation and Y-up conversion.
 - `Engine/Source/Runtime/NNE/Private/NNEModelData.cpp`: uncooked FileData / AdditionalFileData serialization.
 
-The inference models, body data and SDK originate from the local installation. They are not committed to this repository. Original Epic/Autodesk assets retain their attribution; extraction manifests identify source files.
+The inference models, body data and SDK originate from the local installation. Large inference models and SDK binaries are not committed. The small Quinn reference FBX, skeleton text and provenance manifest are bundled. Original Epic/Autodesk assets retain their attribution; extraction manifests identify source files.
 
 ## Model extraction
 
@@ -74,3 +74,7 @@ YOLOX license: Apache-2.0, https://github.com/Megvii-BaseDetection/YOLOX/blob/ma
 `video.VideoFrames` is a repeatable iterable with integer frame access. Each sequential pass opens and releases its own decoder and reads frames in order. It applies the same resize/rotation contract as before. Detector, ViTPose, diagnostics and CHMR make separate passes; no full list of RGB rasters is retained. Hue keeps its existing context-window schedule, tested for complete/nonduplicated retained indices at 619, 1200 and 10000 frames. The FBX helper still has a 100000-frame sanity limit. Long clips cost proportionally more time and store proportional feature/pose/output data; there is no promise of constant total memory for arbitrarily long input.
 
 HTML skeleton previews retain up to approximately 600 sampled frames and adjust playback FPS/source-frame labels. FBX, NPZ and diagnostic MP4 retain the full input frame range. Variable-FPS timestamps and camera motion remain unsupported.
+
+## Reproducible setup
+
+SetupStandalone.bat invokes the standard-library tools/bootstrap_setup.py under Python 3.13 x64. Interactive setup selects the UE folder with tkinter; the bundled Quinn skeleton removes the need for another FBX selection. The setup detects MSVC using vswhere, creates/reuses .venv, installs pinned requirements, stages and validates UE model extraction, builds all three helpers, downloads the pinned YOLOX model, then runs tests and doctor. Existing complete models are hash-checked and reused; differing existing model files are not silently overwritten. Extraction staging and explicit Quinn replacement backups stay under ignored work/. See README for prerequisites, exact source/destination paths and noninteractive flags.

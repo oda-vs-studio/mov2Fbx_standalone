@@ -40,13 +40,7 @@ FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモ�
 
 人物検出モデルは `SetupPersonDetection.bat` で公式YOLOX-S ONNXを取得できます（通常実行はオフライン）。このPCでは設定済みです。
 
-同梱骨格を別の基準FBXへ差し替える場合だけ、セットアップ後に次を実行してください。
-
-```powershell
-tools\build_skeleton.bat
-tools\build_retarget.bat
-.venv\Scripts\python.exe -m tools.configure_quinn 'C:\temp\SKM_Quinn_Simple.FBX'
-```
+Quinn基準骨格を変更する場合は、後述の `SetupStandalone.bat --quinn` を使用してください。元の骨格データをバックアップしてから切り替えます。
 
 既存の推定結果への適用はPythonから `m2a.retarget.export_retarget(run_directory, output_fbx)` を呼び出せます。
 通常GUIと既存CLIの `motion.fbx` は引き続きSMPL-X骨格です。Quinn出力は上記BATで行います。
