@@ -19,6 +19,30 @@ FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモ�
 最終段のHueは、UE側の実装と同様にCPUへ固定しています。
 解析中のCancelは、このツールが起動した推論プロセスだけを停止します。途中ファイルは残り、成功表示にはなりません。
 
+## 動画をドロップしてQuinn FBXを書き出す
+
+`DropVideoToQuinnFBX.bat` に動画をドロップしてください。複数ファイルも順に処理します。
+例: `D:\video\dance.mp4` → `D:\video\dance.fbx`。既存の同名FBXは上書きせずエラーにします。
+
+- 入力骨格: `C:\temp\SKM_Quinn_Simple.FBX` から抽出した89ボーン。メッシュは含みません。
+- `QuinnSkeleton.fbx` は骨だけの基準姿勢です。通常実行では元FBXやUEを参照しません。
+- 全フレームを処理します。現在は12〜600フレーム、1人用・画面全体ROIです。長すぎる動画は切り捨てずエラーにします。
+- AポーズとTポーズの差、ボーンのローカル軸、体格に応じた移動量を補正します。
+- 骨名と親子関係を維持し、指を含む55ボーンを対応付けます。余剰のねじり骨は親に追従し、IK補助骨は対応する手足へ追従します。
+- rootに水平移動、pelvisに上下動・身体の回転を格納。Y-up、cmです。足固定・接触IK・Quinnの補正リグは適用しません。
+- `runs/drop/日時_ID` に生の推定結果、リターゲットNPZ、検証ログを保存します。
+
+骨格の再設定（初回または別PC）は次を実行してください。
+
+```powershell
+tools\build_skeleton.bat
+tools\build_retarget.bat
+.venv\Scripts\python.exe -m tools.configure_quinn 'C:\temp\SKM_Quinn_Simple.FBX'
+```
+
+既存の推定結果への適用はPythonから `m2a.retarget.export_retarget(run_directory, output_fbx)` を呼び出せます。
+通常GUIと既存CLIの `motion.fbx` は引き続きSMPL-X骨格です。Quinn出力は上記BATで行います。
+
 ## 2人の動画
 
 1人目と2人目のROIを両方指定すると、同じフレーム範囲を人物別に処理します。
@@ -43,7 +67,7 @@ ROI内に他の人物が大きく入る場面や遮蔽では、手足が混ざ�
 | `fbx_validation.txt` | FBXをSDKで再読み込みし、全キーのローカル変換を検証した結果 |
 | `SUCCESS` | 推論・書き出しがすべて完了した場合にだけ作成 |
 
-FBXは**Mannyの骨格ではありません**。Manny用IKリターゲットを含め、元のMovie2Animとの完全互換は未実装です。
+この表は通常GUI / solveコマンドの出力です。Quinnへの書き出しは上記の専用BATを使用します。元のMovie2Animとの完全互換は未実装です。
 
 ## CLI
 
@@ -81,7 +105,7 @@ UEとの差分:
 - カメラ校正は選択範囲の先頭フレームで行います。
 - UEのBodyTrackingOptimizerによる接地・足固定は未移植です。
 - 床合わせは足・足首の関節位置を使います。UEのスキンメッシュの最低点とは異なります。
-- SMPL-XからMetaHuman/MannyへのIKリターゲット、Root/Pelvisの各モード、YAML履歴は未移植です。
+- QuinnへのFKリターゲットは専用BATで実装済みです。UEのIKリターゲット、Root/Pelvisの各モード、YAML履歴は未移植です。
 - OpenCVの補間、NumPy乱数、ONNX Runtimeの実装差により、UEとの数値一致は保証していません。
 
 ## 検証

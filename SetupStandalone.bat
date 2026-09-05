@@ -16,6 +16,12 @@ call tools\build_fbx.bat
 if errorlevel 1 goto failed
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 if errorlevel 1 goto failed
+call tools\build_skeleton.bat
+if errorlevel 1 goto failed
+call tools\build_retarget.bat
+if errorlevel 1 goto failed
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+if errorlevel 1 goto failed
 echo Setup complete. LaunchStandalone.bat opens the tool.
 pause
 exit /b 0

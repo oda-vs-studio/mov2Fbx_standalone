@@ -43,3 +43,13 @@ There is no coupled interaction model, collision/occlusion solve, automatic ID a
 
 Models are loaded by stage and released before later stages. Hue windows retain overlap; the final model runs on CPU. The input length is bounded to 600 frames because decoded rasters are held in memory. GPU work has CPU provider fallback inside ONNX Runtime; device selection is not a claim that every operator ran on GPU.
 Existing output directories are rejected. Partial runs remain inspectable. GUI cancellation terminates only its own Python child, and completion is gated on exit code plus `SUCCESS`.
+
+## Quinn export
+
+`fbx_skeleton.exe` reads only skeleton nodes, collapsing non-skeleton ancestors into global reference transforms, and converts the supplied FBX to Y-up centimetres. The extracted default reference pose is saved in models; no original mesh or UE dependency is needed during runtime. Scaled and multi-root skeletons are rejected.
+
+`m2a.retarget` uses explicit SMPL-X / Quinn bone correspondence. Reference outgoing bone directions calibrate the A-pose to T-pose difference while preserving target local axes and segment lengths. The world-space source rotations drive calibrated target frames, then parent inverse transforms recover FBX local rotations. Target leg length scales pelvis translation. Additional spine/neck bones share the corresponding source rotation. Twist bones retain reference local offsets; IK markers follow hands and feet. This is FK transfer, not a foot-contact IK solver or a reproduction of UE's corrective rig.
+
+`fbx_retarget.exe` writes skeleton-only FBX, a reference bind pose, and per-frame local translations/rotations; it reimports and compares every local matrix. Tests independently re-extract reference global transforms, check animated bone lengths, outgoing directions, root travel and IK marker positions. Raw Hue output is retained.
+
+The drop BAT explicitly writes the final FBX beside the selected video (the user-requested exception to run-directory-only output). Exclusive creation prevents overwriting an existing FBX. All intermediates stay in a unique runs/drop directory. Input videos outside 12..600 frames fail without truncation.
