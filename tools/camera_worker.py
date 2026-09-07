@@ -108,6 +108,7 @@ def background_mask(shape, boxes, size, valid=None):
     h,w=shape; ow,oh=size
     mask=np.ones((h,w),np.uint8)*255 if valid is None else cv2.resize(valid,(w,h),interpolation=cv2.INTER_NEAREST)
     for box in boxes:
+        if box[2]<=box[0] or box[3]<=box[1]:continue
         x1,y1,x2,y2=np.asarray(box)*[w/ow,h/oh,w/ow,h/oh]
         pad=max(4,.08*max(x2-x1,y2-y1))
         cv2.rectangle(mask,(max(0,int(x1-pad)),max(0,int(y1-pad))),(int(x2+pad),int(y2+pad)),0,-1)

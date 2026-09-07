@@ -213,13 +213,15 @@ def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,mo
         del frames
     camera_status=json.loads((camera_dir/'camera_report.json').read_text()) if moving_camera else None
     if camera_status and 'segments' in camera_status:
+        from .track_intervals import prepare_intervals
+        camera_status,tracking_skips=prepare_intervals(camera_status,tracks,camera_dir)
         exports=[];errors=[]
         for segment in camera_status['segments']:
             first,last=segment['start'],segment['end']
             folder=output if not camera_status['partial'] else output/'segments'/f"{segment['id']:03d}"
             folder.mkdir(parents=True,exist_ok=True)
             try:
-                result=solve_range(video,folder,models,provider,camera,tracks,first,last,
+                result=solve_range(video,folder,models,provider,camera,[tracks[i] for i in segment.get('track_indices',range(len(tracks)))],first,last,
                     camera_dir/segment['camera_dir'],correct_tilt,log)
                 result.update(source_start_frame=first,source_end_frame_inclusive=last-1,
                     input_frames=camera_status['input_frames'],partial=camera_status['partial'])
@@ -232,7 +234,7 @@ def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,mo
                 log(f'SEGMENT FAILED {first}..{last-1}: {exc}; continuing')
         manifest=dict(partial=camera_status['partial'] or bool(errors),exports=exports,
             input_frames=camera_status['input_frames'],camera_skipped_ranges=camera_status['skipped_ranges'],
-            camera_failures=camera_status['failures'],segment_errors=errors,
+            camera_failures=camera_status['failures'],tracking_skipped_ranges=tracking_skips,segment_errors=errors,
             independent_world_origins=camera_status['partial'])
         (output/'segments_manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
         if not exports:raise ValueError('No segment completed body solve/export; see segments_manifest.json')

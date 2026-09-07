@@ -122,6 +122,27 @@ class Tracker:
         self.tracks=[t for t in self.tracks if t['id'] not in removed]
         return joins
 
+    def finish_partial(self,n,wh):
+        result=[]
+        for track in self.tracks:
+            keys=np.array(sorted(track['samples']))
+            if len(keys)<6:continue
+            boxes=np.zeros((n,4));valid=np.zeros(n,dtype=bool)
+            for part in np.split(keys,np.flatnonzero(np.diff(keys)>self.max_gap+1)+1):
+                if len(part)<6 or part[-1]-part[0]+1<12:continue
+                first,last=int(part[0]),int(part[-1])+1
+                observed=np.array([track['samples'][int(i)][0] for i in part])
+                local=np.column_stack([np.interp(np.arange(first,last),part,observed[:,k]) for k in range(4)])
+                local=gaussian_filter1d(local,1,axis=0,mode='nearest')
+                center=(local[:,:2]+local[:,2:])/2;extent=(local[:,2:]-local[:,:2])*1.08
+                local=np.concatenate([center-extent/2,center+extent/2],axis=1)
+                local[:,0::2]=local[:,0::2].clip(0,wh[0]);local[:,1::2]=local[:,1::2].clip(0,wh[1])
+                boxes[first:last]=local;valid[first:last]=True
+            if valid.any():result.append(dict(id=track['id'],boxes=boxes,valid=valid,
+                observed=np.isin(np.arange(n),keys)&valid,coverage=float(valid.mean())))
+        if not result:raise ValueError('No person interval with at least 12 frames and 6 observations')
+        return result
+
     def finish(self,n,wh):
         significant=[t for t in self.tracks if len(t['samples'])>=max(6,n*.15)]
         if not significant:raise ValueError('No persistent person detected')
@@ -160,15 +181,16 @@ def detect_tracks(frames,fps,models,provider,output,log=print,allow_small_initia
         joins=tracker.stitch_fragments()
         (output/'track_joins.json').write_text(json.dumps(joins,indent=2),encoding='utf-8')
         if joins:log(f'Joined {len(joins)} unambiguous short tracking gaps')
-    tracks=tracker.finish(len(frames),(frames[0].shape[1],frames[0].shape[0]))
+    tracks=(tracker.finish_partial if allow_small_initial else tracker.finish)(len(frames),(frames[0].shape[1],frames[0].shape[0]))
     np.savez_compressed(output/'tracks.npz',boxes=np.array([t['boxes'] for t in tracks]),
-                        observed=np.array([t['observed'] for t in tracks]),ids=[t['id'] for t in tracks],fps=fps)
+                        observed=np.array([t['observed'] for t in tracks]),valid=np.array([t.get('valid',np.ones(len(frames),dtype=bool)) for t in tracks]),ids=[t['id'] for t in tracks],fps=fps)
     writer=cv2.VideoWriter(str(output/'tracking.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),fps,(frames[0].shape[1],frames[0].shape[0]))
     if not writer.isOpened():raise RuntimeError('Cannot write tracking preview')
     try:
         for i,frame in enumerate(frames):
             out=frame.copy()
             for person,t in enumerate(tracks,1):
+                if 'valid' in t and not t['valid'][i]:continue
                 x0,y0,x1,y1=t['boxes'][i].astype(int);color=(255,160,40) if person==1 else (90,220,100)
                 cv2.rectangle(out,(x0,y0),(x1,y1),color,2)
                 cv2.putText(out,f'Person {person}'+(' (interpolated)' if not t['observed'][i] else ''),(x0,max(20,y0-5)),cv2.FONT_HERSHEY_SIMPLEX,.6,color,2)
