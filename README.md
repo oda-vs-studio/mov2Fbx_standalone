@@ -224,3 +224,6 @@ UEとの差分:
 ## 移動カメラ（同じレンズ・ズームなし）
 
 SetupMovie2Anim.bat で専用CUDA環境を作り、DropVideoToMovie2Anim.bat に動画をドロップしてください。GeoCalib + DA3 の処理、調達元、制約は [docs/MOVING_CAMERA.md](docs/MOVING_CAMERA.md)、進捗は [docs/MOVING_CAMERA_PLAN.md](docs/MOVING_CAMERA_PLAN.md) を参照してください。従来の固定カメラBATも使用できます。
+
+### 長い動画名への対応
+出力フォルダには動画名の先頭最大24 UTF-16単位だけを使い、日時・IDを付けます。成果物名には動画名を繰り返さず、scene.fbx または scene_frames_000834-000845_segment_person_01.fbx のように保存します。元動画の完全なパスは input.json に保存します。保存先の親フォルダ自体が長すぎる場合は推定開始前に通知します。既存の結果は変更しません。

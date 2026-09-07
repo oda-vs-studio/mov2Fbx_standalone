@@ -24,7 +24,7 @@ class PackagingTests(unittest.TestCase):
             for run in runs:
                 self.assertEqual(run.parent.parent,video.parent)
                 self.assertEqual(run.name,'_work')
-                self.assertEqual((run.parent/'a video.fbx').read_bytes(),b'fbx')
+                self.assertEqual((run.parent/'scene.fbx').read_bytes(),b'fbx')
 
     def test_setup_stops_before_camera_if_body_setup_fails(self):
         with patch.object(setup_all.subprocess,'run',side_effect=subprocess.CalledProcessError(1,'body')) as run,patch('sys.argv',['setup','--engine','D:/UE','--noninteractive']):
