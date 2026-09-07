@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--provider',choices=['dml','cpu'],default='dml')
     parser.add_argument('--no-tilt-correction',action='store_true',help='Keep camera-only orientation when the initial feet are not planted')
     parser.add_argument('--moving-camera',action='store_true')
+    parser.add_argument('--output-folder',action='store_true',help='Create a unique result folder beside each video, including intermediate work')
     parser.add_argument('--camera-model',default='DA3-LARGE',choices=['DA3-LARGE','DA3-GIANT','DA3NESTED-GIANT-LARGE'])
     args=parser.parse_args()
     failed=False
@@ -26,13 +27,19 @@ def main():
             video=video.resolve()
             if not video.is_file() or video.suffix.lower() not in {'.mp4','.mov','.avi','.mkv','.webm','.m4v','.wmv'}:
                 raise ValueError(f'Not a supported video: {video}')
-            dest=video.with_suffix('.fbx')
+            token=datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:8]
+            result_dir=video.parent/(video.stem+'_Movie2Anim_'+token) if args.output_folder else video.parent
+            dest=result_dir/(video.stem+'.fbx')
             if dest.exists() and not args.moving_camera: raise FileExistsError(f'FBX already exists; rename or remove it before retrying: {dest}')
             cap=cv2.VideoCapture(str(video)); frames=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); cap.release()
             if frames<12:
                 raise ValueError(f'Video has {frames} frames. At least 12 frames are required.')
             if not (ROOT/'models/quinn_skeleton.txt').is_file(): raise FileNotFoundError('Quinn skeleton has not been configured')
-            run=ROOT/'runs/drop'/(datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:8])
+            if args.output_folder:
+                result_dir.mkdir()
+                run=result_dir/'_work'
+            else:
+                run=ROOT/'runs/drop'/token
             print(f'\nInput: {video}\nOutput: {dest}\nWork: {run}',flush=True)
             report=solve_auto(video,run,ROOT/'models',provider=args.provider,correct_tilt=not args.no_tilt_correction,moving_camera=args.moving_camera,camera_model=args.camera_model,log=lambda s:print(s,flush=True))
             if 'exports' in report:

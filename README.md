@@ -4,6 +4,17 @@ Unreal Editorを起動せず、人物動画からSMPL-Xの3D骨格アニメー�
 姿勢推定用ONNXモデルはローカルUE 5.8プラグインから初回に抽出します。自動検出用YOLOX-Sは公式公開モデルを初回に取得し、以降はPython / ONNX Runtimeだけで実行します。
 FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモジュールの依存はありません。
 
+## 移動カメラ：一括セットアップと動画ドロップ
+
+1. `SetupMovie2Anim.bat` を実行し、UE 5.8のフォルダ（Engineを含むフォルダ）を選択します。
+2. `DropVideoToMovie2Anim.bat` に動画をドロップします。複数動画にも対応します。
+
+元動画の隣に `動画名_Movie2Anim_日時_ID/` を毎回新規作成し、全成功区間のFBX、区間ごとのJSON、`動画名_segments.json` を保存します。中間ファイル・詳細レポート・プレビューは同じフォルダの `_work/` に残ります。失敗後も再探索します。区間間の座標原点は独立、単独区間は最低12フレームです。既存の成果物・モデルは削除しません。`DropVideoToQuinnFBX_MovingCamera.bat` も同じ保存仕様です。
+
+セットアップにはWindows x64、Python 3.13 x64（PATHまたはM2A_PYTHON）、Git、Visual Studio C++ Build Tools、対象プラグインを含むUE 5.8、対応するNVIDIA GPU/ドライバとネット接続が必要です。人体用Python 3.13仮想環境、UE由来ONNX/骨格データ・FBXツール、検出モデルを用意した後、カメラ用Python 3.12仮想環境・CUDA 12.8版Torch・GeoCalib・DA3-LARGEをセットアップします。QuinnSkeleton.fbxと骨格設定は同梱を再利用します。UEに対象プラグインがない場合はモデル取得できません。
+
+無人実行例：`SetupMovie2Anim.bat --engine "D:\UE\UE_5.8" --noninteractive`。GIANTを使う場合は `--camera-model DA3-GIANT` を追加し、推論にも同じオプションを指定します。既定はLARGEです。初期両足接地を仮定できない動画では推論時に `--no-tilt-correction` を指定します。調達元・配置・固定revisionは [移動カメラ説明](docs/MOVING_CAMERA.md) と従来のセットアップ説明を参照してください。
+
 ## 起動
 
 このPCではセットアップ済みです。`LaunchStandalone.bat` をダブルクリックしてください。
