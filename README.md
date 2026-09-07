@@ -197,3 +197,7 @@ UEとの差分:
 数値的な出力成功とモーション品質の確認は区別し、2人の動画は特にキーポイント確認動画を見てください。
 
 設計と由来は `docs/ARCHITECTURE.md` を参照してください。
+
+## 移動カメラ（同じレンズ・ズームなし）
+
+SetupCamera.bat で専用CUDA環境を作り、DropVideoToQuinnFBX_MovingCamera.bat に動画をドロップしてください。GeoCalib + DA3 の処理、調達元、制約は [docs/MOVING_CAMERA.md](docs/MOVING_CAMERA.md)、進捗は [docs/MOVING_CAMERA_PLAN.md](docs/MOVING_CAMERA_PLAN.md) を参照してください。従来の固定カメラBATも使用できます。

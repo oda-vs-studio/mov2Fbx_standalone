@@ -13,11 +13,12 @@ from .runtime import Model
 
 
 class PersonDetector:
-    def __init__(self, models, provider):
+    def __init__(self, models, provider, min_height=.18):
         if not (Path(models)/'yolox_s.onnx').is_file():
             raise FileNotFoundError('Run SetupPersonDetection.bat to install the person detector')
         self.model=Model(models,'yolox_s',provider)
         self.size=640
+        self.min_height=min_height
         grids=[]; strides=[]
         for stride in [8,16,32]:
             y,x=np.mgrid[:self.size//stride,:self.size//stride]
@@ -42,7 +43,7 @@ class PersonDetector:
         while len(order):
             i=order[0];keep.append(i)
             order=order[1:][box_iou(boxes[i],boxes[order[1:]])<.5]
-        keep=[i for i in keep if boxes[i,3]-boxes[i,1]>h*.18 and boxes[i,2]-boxes[i,0]>12]
+        keep=[i for i in keep if boxes[i,3]-boxes[i,1]>h*self.min_height and boxes[i,2]-boxes[i,0]>12]
         return boxes[keep],scores[keep]
 
 
@@ -90,6 +91,37 @@ class Tracker:
             self.tracks.append(dict(id=len(self.tracks)+1,box=boxes[j],last=frame_index,
                 velocity=np.zeros(4),appearance=looks[j],samples={frame_index:(boxes[j],float(scores[j]))}))
 
+    def stitch_fragments(self):
+        """Join short, unambiguous gaps without merging overlapping tracks."""
+        joins=[];removed=set()
+        for a in sorted(self.tracks,key=lambda t:-len(t['samples'])):
+            if a['id'] in removed or len(a['samples'])<6:continue
+            while True:
+                last=max(a['samples']);box=a['samples'][last][0]
+                candidates=[]
+                for b in self.tracks:
+                    if b is a or b['id'] in removed or len(b['samples'])<6:continue
+                    first=min(b['samples']);gap=first-last-1
+                    if not 0<=gap<=self.max_gap:continue
+                    other=b['samples'][first][0]
+                    height=max(box[3]-box[1],other[3]-other[1])
+                    distance=np.linalg.norm((box[:2]+box[2:]-other[:2]-other[2:])/2)/max(height,1)
+                    ratio=(other[3]-other[1])/max(box[3]-box[1],1)
+                    color=np.sqrt(max(0,1-np.sqrt(a['appearance']*b['appearance']).sum()))
+                    if distance>1.5 or not .4<ratio<2.5 or color>.35:continue
+                    candidates.append((distance+2*color+.02*gap,b))
+                candidates.sort(key=lambda item:item[0])
+                if not candidates or (len(candidates)>1 and candidates[1][0]-candidates[0][0]<.2):break
+                _,b=candidates[0]
+                rivals=[t for t in self.tracks if t is not a and t is not b and t['id'] not in removed
+                        and len(t['samples'])>=6 and 0<=min(b['samples'])-max(t['samples'])-1<=self.max_gap
+                        and np.sqrt(max(0,1-np.sqrt(t['appearance']*b['appearance']).sum()))<.35]
+                if any(len(t['samples'])>=len(a['samples'])*.5 for t in rivals):break
+                joins.append(dict(from_id=a['id'],to_id=b['id'],gap_frames=min(b['samples'])-last-1))
+                a['samples'].update(b['samples']);removed.add(b['id'])
+        self.tracks=[t for t in self.tracks if t['id'] not in removed]
+        return joins
+
     def finish(self,n,wh):
         significant=[t for t in self.tracks if len(t['samples'])>=max(6,n*.15)]
         if not significant:raise ValueError('No persistent person detected')
@@ -111,15 +143,23 @@ class Tracker:
         return result
 
 
-def detect_tracks(frames,fps,models,provider,output,log=print):
+def detect_tracks(frames,fps,models,provider,output,log=print,allow_small_initial=False):
     output=Path(output); detector=PersonDetector(models,provider)
     tracker=Tracker(max_gap=max(3,round(fps*.4))); detections=[]
     for i,frame in enumerate(frames):
         boxes,scores=detector(frame)
+        if i==0 and allow_small_initial and not np.any(scores>=.45):
+            detector.min_height=.06
+            boxes,scores=detector(frame)
+            log("No large initial actor; allowing smaller distant people (height >= 6%)")
         tracker.update(i,boxes,scores,[appearance(frame,b) for b in boxes])
         detections.append(dict(frame=i,boxes=boxes.tolist(),scores=scores.tolist()))
         if i%12==0 or i==len(frames)-1:log(f'Person detection {i+1}/{len(frames)}')
     (output/'detections.json').write_text(json.dumps(detections),encoding='utf-8')
+    if allow_small_initial:
+        joins=tracker.stitch_fragments()
+        (output/'track_joins.json').write_text(json.dumps(joins,indent=2),encoding='utf-8')
+        if joins:log(f'Joined {len(joins)} unambiguous short tracking gaps')
     tracks=tracker.finish(len(frames),(frames[0].shape[1],frames[0].shape[0]))
     np.savez_compressed(output/'tracks.npz',boxes=np.array([t['boxes'] for t in tracks]),
                         observed=np.array([t['observed'] for t in tracks]),ids=[t['id'] for t in tracks],fps=fps)

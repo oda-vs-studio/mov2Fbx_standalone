@@ -55,3 +55,9 @@ OnnxExternalData*
 !/models/quinn_skeleton.txt
 !/models/quinn_manifest.json
 
+
+.venv-camera*/
+/runtime-camera/
+/third_party/
+*.tar
+

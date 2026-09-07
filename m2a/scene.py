@@ -117,7 +117,7 @@ def combine_targets(target,animations):
     return combined,np.concatenate(ts,axis=1),np.concatenate(rs,axis=1)
 
 
-def export_scene(runs,output,correct_tilt=True,initial_seconds=.2):
+def export_scene(runs,output,correct_tilt=True,initial_seconds=.2,camera_dir=None):
     output=Path(output);target=load_skeleton(ROOT/'models/quinn_skeleton.txt')
     body=np.load(ROOT/'models/skeleton.npz');actors=[];fps=None
     for run in map(Path,runs):
@@ -127,6 +127,10 @@ def export_scene(runs,output,correct_tilt=True,initial_seconds=.2):
             raise ValueError('Scene actors must share all frame timestamps')
         fps=float(motion['fps'])
         actors.append(dict(run=run,local=rotations.as_matrix().reshape(-1,55,3,3),root=root,offsets=offsets,world=world))
+    camera_report=None
+    if camera_dir is not None:
+        from .moving_camera import world_actors
+        actors,fps,camera_report=world_actors(runs,body,camera_dir)
     initial=max(1,min(len(actors[0]['root']),round(fps*initial_seconds)))
     report=stabilize_scene(actors,initial,correct_tilt)
     idx={n:i for i,n in enumerate(target['names'])}
@@ -163,6 +167,19 @@ def export_scene(runs,output,correct_tilt=True,initial_seconds=.2):
         placement='Shared monocular camera coordinates; common scale and initial floor; metric distance remains estimated',
         limitations=['Fixed camera only; no camera-motion reconstruction','Initial two-foot contact is assumed',
                      'Virtual sole proxies, not a fitted mesh ground-contact solver','No per-frame foot lock or inter-person collision solve'])
+    if camera_report is not None:
+        report['camera']=camera_report
+        report['quality_warnings']=[]
+        report['motion_diagnostics']=[]
+        for i,a in enumerate(actors,1):
+            vertical=float(np.ptp(a['root'][:,1]))
+            speed=float(np.linalg.norm(np.diff(a['root'],axis=0),axis=1).max()*fps)
+            report['motion_diagnostics'].append(dict(person=i,vertical_range_m=vertical,max_root_speed_mps=speed))
+            if vertical>2. or speed>12.:
+                report['quality_warnings'].append(f'Person {i}: inferred vertical range {vertical:.2f} m, peak root speed {speed:.2f} m/s. Review camera/body drift and scale; FBX serialization success is not motion accuracy.')
+        report['placement']='DA3 shared world coordinates; common estimated body/depth scale'
+        report['mode']='initial double support after moving-camera world conversion'
+        report['limitations'][0]='Experimental moving-camera solve; camera and body/depth alignment are estimated'
     (output/'scene.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     # Shared viewport, rather than independent recentered viewers.
     from .preview import write_preview
@@ -173,27 +190,100 @@ def export_scene(runs,output,correct_tilt=True,initial_seconds=.2):
     return report
 
 
-def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print):
+def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,moving_camera=False,camera_model='DA3-LARGE'):
     from .pipeline import read_frames,calibrate,solve
     from .tracking import detect_tracks
     output=Path(output)
     if output.exists():raise FileExistsError(f'Run exists: {output}')
     output.mkdir(parents=True)
+    camera_dir=output/'camera' if moving_camera else None
+    if moving_camera:
+        from .moving_camera import worker
+        worker('rectify',camera_dir,video,camera_model)
+        video=camera_dir/'rectified.avi'
     frames,fps=read_frames(video,0,None,0)
-    tracks=detect_tracks(frames,fps,models,provider,output,log)
-    camera=calibrate(frames[0],models,provider)
-    del frames
+    tracks=detect_tracks(frames,fps,models,provider,output,log,allow_small_initial=moving_camera)
+    if moving_camera:
+        lens=json.loads((camera_dir/'lens.json').read_text())
+        camera=(lens['K'][0][0],0.,0.)
+        del frames
+        worker('poses',camera_dir,model=camera_model)
+    else:
+        camera=calibrate(frames[0],models,provider)
+        del frames
+    camera_status=json.loads((camera_dir/'camera_report.json').read_text()) if moving_camera else None
+    if camera_status and 'segments' in camera_status:
+        exports=[];errors=[]
+        for segment in camera_status['segments']:
+            first,last=segment['start'],segment['end']
+            folder=output if not camera_status['partial'] else output/'segments'/f"{segment['id']:03d}"
+            folder.mkdir(parents=True,exist_ok=True)
+            try:
+                result=solve_range(video,folder,models,provider,camera,tracks,first,last,
+                    camera_dir/segment['camera_dir'],correct_tilt,log)
+                result.update(source_start_frame=first,source_end_frame_inclusive=last-1,
+                    input_frames=camera_status['input_frames'],partial=camera_status['partial'])
+                (folder/'scene.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
+                exports.append(dict(directory=str(folder.relative_to(output)),start=first,end=last,people_count=result['people_count']))
+            except Exception as exc:
+                import traceback
+                (folder/'ERROR.txt').write_text(traceback.format_exc(),encoding='utf-8')
+                errors.append(dict(start=first,end=last,reason=str(exc)))
+                log(f'SEGMENT FAILED {first}..{last-1}: {exc}; continuing')
+        manifest=dict(partial=camera_status['partial'] or bool(errors),exports=exports,
+            input_frames=camera_status['input_frames'],camera_skipped_ranges=camera_status['skipped_ranges'],
+            camera_failures=camera_status['failures'],segment_errors=errors,
+            independent_world_origins=camera_status['partial'])
+        (output/'segments_manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+        if not exports:raise ValueError('No segment completed body solve/export; see segments_manifest.json')
+        return manifest
+    selected_frames=camera_status['frames'] if camera_status else None
     runs=[]
     for i,t in enumerate(tracks,1):
         run=output/f'person_{i:02d}'
         log(f'Capturing person {i}/{len(tracks)}')
-        solve(video,run,models,provider=provider,camera=camera,track_boxes=t['boxes'],log=log)
+        solve(video,run,models,provider=provider,camera=camera,track_boxes=t['boxes'][:selected_frames],end=selected_frames-1 if selected_frames else None,log=log)
+        if moving_camera:
+            metadata=json.loads((run/'metadata.json').read_text())
+            metadata['moving_camera']='../camera/trajectory.npz; applied at shared scene export'
+            metadata['limitations']=[x for x in metadata['limitations'] if x!='Camera estimated on first selected frame']
+            metadata['limitations'].append('Hue zero camera angular input; explicit DA3 world conversion follows')
+            (run/'metadata.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
         runs.append(run)
-    report=export_scene(runs,output,correct_tilt)
-    report['tracking']=[dict(id=t['id'],coverage=t['coverage'],interpolated_frames=int((~t['observed']).sum())) for t in tracks]
+    report=export_scene(runs,output,correct_tilt,camera_dir=camera_dir)
+    if camera_status is not None:
+        report['partial']=camera_status['partial']
+        report['source_start_frame']=0
+        report['source_end_frame_inclusive']=selected_frames-1
+        report['input_frames']=camera_status['input_frames']
+        report['camera_stop_reason']=camera_status['failure']
+    report['tracking']=[dict(id=t['id'],coverage=float(t['observed'][:selected_frames].mean()),interpolated_frames=int((~t['observed'][:selected_frames]).sum())) for t in tracks]
     (output/'scene.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     for i,p in enumerate(report['people'],1):
         status='applied' if p['residual_applied'] else 'disabled or unreliable; no subject residual correction'
         log(f'Initial foot plane person {i}: {p["tilt_deg"]:.2f} degrees, {status}')
+    for warning in report.get('quality_warnings',[]):log('QUALITY REVIEW: '+warning)
     log(f'Scene complete: {len(tracks)} person(s), shared positions')
+    return report
+
+
+def solve_range(video,output,models,provider,camera,tracks,first,last,camera_dir,correct_tilt,log):
+    """All people use exactly the same source timestamps within one camera world."""
+    from .pipeline import solve
+    runs=[]
+    for i,track in enumerate(tracks,1):
+        run=output/f'person_{i:02d}'
+        log(f'Segment {first}..{last-1}: person {i}/{len(tracks)}')
+        solve(video,run,models,provider=provider,camera=camera,start=first,end=last-1,
+            track_boxes=track['boxes'][first:last],log=log)
+        metadata=json.loads((run/'metadata.json').read_text())
+        metadata['moving_camera']=str(camera_dir/'trajectory.npz')
+        metadata['limitations']=[x for x in metadata['limitations'] if x!='Camera estimated on first selected frame']
+        metadata['limitations'].append('Hue zero camera angular input; independent segment world conversion follows')
+        (run/'metadata.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
+        runs.append(run)
+    report=export_scene(runs,output,correct_tilt,camera_dir=camera_dir)
+    report['tracking']=[dict(id=t['id'],coverage=float(t['observed'][first:last].mean()),
+        interpolated_frames=int((~t['observed'][first:last]).sum())) for t in tracks]
+    for warning in report.get('quality_warnings',[]):log('QUALITY REVIEW: '+warning)
     return report
