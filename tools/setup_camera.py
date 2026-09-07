@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = {
@@ -17,6 +18,40 @@ SOURCES = {
 def run(args, **kw):
     print('>', subprocess.list2cmdline(list(map(str, args))), flush=True)
     subprocess.run(list(map(str, args)), cwd=ROOT, check=True, **kw)
+
+
+def ensure_camera_python(uv, env):
+    """Keep the base interpreter inside this project; preserve installed packages."""
+    venv=ROOT/'.venv-camera'
+    cfg=venv/'pyvenv.cfg'
+    text=cfg.read_text(encoding='utf-8') if cfg.exists() else ''
+    values=dict(line.split(' = ',1) for line in text.splitlines() if ' = ' in line)
+    version=values.get('version_info','3.12.14')
+    if not version.startswith('3.12.'):raise RuntimeError('Existing camera environment is not Python 3.12; preserved')
+    base=ROOT/'runtime-camera/python'/f'cpython-{version}-windows-x86_64-none'
+    executable=base/'python.exe'
+    if not executable.exists():
+        previous=Path(values.get('home','__missing__'))
+        if (previous/'python.exe').is_file() and previous.resolve()!=base.resolve():
+            base.parent.mkdir(parents=True,exist_ok=True)
+            print('Copying existing Python runtime into project:',base,flush=True)
+            shutil.copytree(previous,base)
+        else:
+            run([uv,'python','install',version],env=env)
+    run([executable,'-c','import sys,struct; assert sys.version_info[:2]==(3,12) and struct.calcsize("P")==8'])
+    if cfg.exists():
+        backup=cfg.with_suffix('.cfg.before_local_runtime')
+        if not backup.exists():backup.write_text(text,encoding='utf-8')
+        lines=[]
+        for line in text.splitlines():
+            key=line.split(' = ',1)[0]
+            if key=='home':line='home = '+str(base)
+            elif key in ('executable','base-executable'):line=key+' = '+str(executable)
+            lines.append(line)
+        cfg.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    else:
+        run([uv,'venv','--python',executable,'--seed',venv],env=env)
+    return venv/'Scripts/python.exe'
 
 
 def main():
@@ -31,9 +66,7 @@ def main():
     env['UV_PYTHON_INSTALL_DIR'] = str(ROOT/'runtime-camera/python')
     env['UV_CACHE_DIR'] = str(ROOT/'work/uv-cache')
     uv = bootstrap.with_name('uv.exe')
-    python = ROOT/'.venv-camera/Scripts/python.exe'
-    if not python.exists():
-        run([uv, 'venv', '--python', '3.12', '--seed', ROOT/'.venv-camera'], env=env)
+    python = ensure_camera_python(uv, env)
     run([python, '-c', 'import sys,struct; assert sys.version_info[:2]==(3,12) and struct.calcsize("P")==8, "Use Python 3.12 x64; existing environment preserved"'])
     run([python, '-m', 'pip', 'install', 'torch==2.7.1+cu128', 'torchvision==0.22.1+cu128', '--index-url', 'https://download.pytorch.org/whl/cu128'])
     run([python, '-m', 'pip', 'install', '-r', ROOT/'requirements-camera.txt'])
@@ -52,7 +85,7 @@ def main():
     run([python, '-m', 'tools.camera_worker', 'download', '--model', args.model])
     frozen = subprocess.check_output([str(python), '-m', 'pip', 'freeze'], text=True)
     (ROOT/'work/camera_environment.lock').write_text(frozen, encoding='utf-8')
-    print('Camera setup complete. Use DropVideoToQuinnFBX_MovingCamera.bat.', flush=True)
+    print('Camera setup complete. Use DropVideoToMovie2Anim.bat.', flush=True)
 
 
 if __name__ == '__main__': main()

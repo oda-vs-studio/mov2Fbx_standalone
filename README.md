@@ -4,12 +4,23 @@ Unreal Editorを起動せず、人物動画からSMPL-Xの3D骨格アニメー�
 姿勢推定用ONNXモデルはローカルUE 5.8プラグインから初回に抽出します。自動検出用YOLOX-Sは公式公開モデルを初回に取得し、以降はPython / ONNX Runtimeだけで実行します。
 FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモジュールの依存はありません。
 
+## BATの用途
+
+| BAT | 用途 |
+|---|---|
+| `SetupMovie2Anim.bat` | 初回・更新時の一括セットアップ |
+| `DropVideoToMovie2Anim.bat` | 通常の動画ドロップ。移動カメラ・成功全区間・専用フォルダ保存 |
+| `DropVideoToQuinnFBX.bat` | 固定カメラ用の従来処理 |
+| `LaunchStandalone.bat` | GUIでフレーム範囲・ROIなどを指定する処理 |
+
+日常の利用は上の2本です。重複した個別セットアップと旧名のドロップBAT、過去の検証一覧専用BATは整理済みです。個別の保守処理が必要な場合は `tools.bootstrap_setup`、`tools.setup_camera`、`tools.setup_detection` のPythonモジュールを直接実行できます。
+
 ## 移動カメラ：一括セットアップと動画ドロップ
 
 1. `SetupMovie2Anim.bat` を実行し、UE 5.8のフォルダ（Engineを含むフォルダ）を選択します。
 2. `DropVideoToMovie2Anim.bat` に動画をドロップします。複数動画にも対応します。
 
-元動画の隣に `動画名_Movie2Anim_日時_ID/` を毎回新規作成し、全成功区間のFBX、区間ごとのJSON、`動画名_segments.json` を保存します。中間ファイル・詳細レポート・プレビューは同じフォルダの `_work/` に残ります。失敗後も再探索します。区間間の座標原点は独立、単独区間は最低12フレームです。既存の成果物・モデルは削除しません。`DropVideoToQuinnFBX_MovingCamera.bat` も同じ保存仕様です。
+元動画の隣に `動画名_Movie2Anim_日時_ID/` を毎回新規作成し、全成功区間のFBX、区間ごとのJSON、`動画名_segments.json` を保存します。中間ファイル・詳細レポート・プレビューは同じフォルダの `_work/` に残ります。失敗後も再探索します。区間間の座標原点は独立、単独区間は最低12フレームです。既存の成果物・モデルは削除しません。
 
 セットアップにはWindows x64、Python 3.13 x64（PATHまたはM2A_PYTHON）、Git、Visual Studio C++ Build Tools、対象プラグインを含むUE 5.8、対応するNVIDIA GPU/ドライバとネット接続が必要です。人体用Python 3.13仮想環境、UE由来ONNX/骨格データ・FBXツール、検出モデルを用意した後、カメラ用Python 3.12仮想環境・CUDA 12.8版Torch・GeoCalib・DA3-LARGEをセットアップします。QuinnSkeleton.fbxと骨格設定は同梱を再利用します。UEに対象プラグインがない場合はモデル取得できません。
 
@@ -18,7 +29,7 @@ FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモ�
 ## 起動
 
 このPCではセットアップ済みです。`LaunchStandalone.bat` をダブルクリックしてください。
-指定7動画の解析結果は `OpenValidation.bat` から開けます。実測結果は `docs/VALIDATION.md` にあります。
+指定7動画の解析結果は `runs/user_validation/index.html` を直接開いて確認できます。実測結果は `docs/VALIDATION.md` にあります。
 
 1. 動画を選択します。
 2. 開始Fと終了Fを指定します。両端を含みます。初回は16〜120フレーム程度を推奨します。
@@ -49,9 +60,9 @@ FBX SDKを使う小さなネイティブ書き出しプログラムにもUEモ�
 - `runs/drop/日時_ID/tracking.mp4` は自動人物IDの確認映像、`scene_preview.html` は2人を同じ空間で見るプレビューです。長尺のHTMLプレビューは軽量化のため間引き表示しますが、FBXは全フレームを書き出します。
 - `runs/drop/日時_ID` に生の推定結果、リターゲットNPZ、検証ログを保存します。
 
-人物検出モデルは `SetupPersonDetection.bat` で公式YOLOX-S ONNXを取得できます（通常実行はオフライン）。このPCでは設定済みです。
+人物検出モデルは `SetupMovie2Anim.bat` で公式YOLOX-S ONNXを取得できます（通常実行はオフライン）。このPCでは設定済みです。
 
-Quinn基準骨格を変更する場合は、後述の `SetupStandalone.bat --quinn` を使用してください。元の骨格データをバックアップしてから切り替えます。
+Quinn基準骨格を変更する場合は、後述の `SetupMovie2Anim.bat --quinn` を使用してください。元の骨格データをバックアップしてから切り替えます。
 
 既存の推定結果への適用はPythonから `m2a.retarget.export_retarget(run_directory, output_fbx)` を呼び出せます。
 通常GUIと既存CLIの `motion.fbx` は引き続きSMPL-X骨格です。Quinn出力は上記BATで行います。
@@ -127,7 +138,7 @@ ROI座標は、回転後かつ高さ896px以下へ縮小した動画のピクセ
 ### 実行
 
 1. リポジトリを任意の書き込み可能なフォルダに取得します。
-2. **`SetupStandalone.bat` をダブルクリック**します。
+2. **`SetupMovie2Anim.bat` をダブルクリック**します。
 3. フォルダ選択画面で、`Engine` フォルダを含むUE 5.8のルートを選びます。`Engine` 自体を選んだ場合も認識します。
 4. 自動で以下を行います。
    - Python 3.13 x64を確認し、リポジトリ専用 `.venv` を作成。
@@ -136,14 +147,15 @@ ROI座標は、回転後かつ高さ896px以下へ縮小した動画のピクセ
    - Visual Studioを検出し、3個のFBX補助EXEをビルド。必要なFBX DLLをコピー。
    - 公式YOLOX-S ONNXをダウンロードしてSHA256を照合。
    - 同梱Quinn骨格を使って変換・FBX往復テストを実行。
-5. `Setup complete` と出れば完了です。`DropVideoToQuinnFBX.bat` に動画をドロップしてください。GUIは `LaunchStandalone.bat` です。
+   - カメラ用Python 3.12環境、CUDA版Torch、GeoCalib・DA3モデルをセットアップ。
+5. 一括セットアップ末尾の `Setup complete: body models, detection, Quinn FBX tools, GeoCalib and DA3` と出れば完了です。`DropVideoToMovie2Anim.bat` に動画をドロップしてください。GUIは `LaunchStandalone.bat` です。
 
 **同梱Quinnを使う限り、別途FBXを探す必要はありません。** `models/quinn_skeleton.txt` がない場合だけ、エクスポート済みQuinn FBXの選択画面を出します。別の基準FBXを明示的に指定するときは、以下の `--quinn` を使用します。
 
 ```bat
-SetupStandalone.bat --engine "D:\UE\UE_5.8" --noninteractive
-SetupStandalone.bat --engine "D:\UE\UE_5.8" --quinn "D:\Assets\SKM_Quinn_Simple.FBX" --noninteractive
-SetupStandalone.bat --engine "D:\UE\UE_5.8" --check-only --noninteractive
+SetupMovie2Anim.bat --engine "D:\UE\UE_5.8" --noninteractive
+SetupMovie2Anim.bat --engine "D:\UE\UE_5.8" --quinn "D:\Assets\SKM_Quinn_Simple.FBX" --noninteractive
+python -m tools.bootstrap_setup --engine "D:\UE\UE_5.8" --check-only --noninteractive
 ```
 
 `--check-only` は前提ファイルと開発環境の読み取り検査のみです。UE未指定ならGUI選択、環境変数 `UE_ROOT` 指定済みならその値を使用します。Pythonの選択を固定する場合は `M2A_PYTHON` にPython 3.13の実行ファイル、VSを指定する場合は `VS_VCVARS` に `vcvars64.bat` の絶対パスを設定します。無人実行では `M2A_SETUP_NO_PAUSE=1` にするとBAT末尾のキー待ちを省略します。
@@ -181,7 +193,7 @@ Quinnの元データを別途用意する場合、検証UEには `Templates/Temp
 - `runs/`, `work/`, `.venv/`, `bin/`, 大きなモデル／中間ファイルは `.gitignore` で除外します。**Quinnの小さな3ファイルだけ例外として同梱**します。
 - Gitから除外しても実ファイルは消しません。推論の再実行に必要なモデルはローカルに残ります。
 - Git履歴の書き換えは行いません。すでに他のブランチ／過去コミットへ巨大ファイルを入れた別リポジトリでは、追跡解除だけで過去履歴のサイズが減るわけではありません。
-- `OpenValidation.bat` が参照する過去の検証動画・結果は同梱しません。新規取得したPCは自身の動画で検証してください。
+- 過去の検証動画・結果（runs/user_validation）は同梱しません。新規取得したPCは自身の動画で検証してください。
 
 ## 実装範囲
 
@@ -211,4 +223,4 @@ UEとの差分:
 
 ## 移動カメラ（同じレンズ・ズームなし）
 
-SetupCamera.bat で専用CUDA環境を作り、DropVideoToQuinnFBX_MovingCamera.bat に動画をドロップしてください。GeoCalib + DA3 の処理、調達元、制約は [docs/MOVING_CAMERA.md](docs/MOVING_CAMERA.md)、進捗は [docs/MOVING_CAMERA_PLAN.md](docs/MOVING_CAMERA_PLAN.md) を参照してください。従来の固定カメラBATも使用できます。
+SetupMovie2Anim.bat で専用CUDA環境を作り、DropVideoToMovie2Anim.bat に動画をドロップしてください。GeoCalib + DA3 の処理、調達元、制約は [docs/MOVING_CAMERA.md](docs/MOVING_CAMERA.md)、進捗は [docs/MOVING_CAMERA_PLAN.md](docs/MOVING_CAMERA_PLAN.md) を参照してください。従来の固定カメラBATも使用できます。

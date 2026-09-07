@@ -11,7 +11,7 @@ if "%~1"=="" (
   exit /b 1
 )
 if not exist ".venv\Scripts\python.exe" (
-  echo Python environment is missing. Run SetupStandalone.bat first.
+  echo Python environment is missing. Run SetupMovie2Anim.bat first.
   pause
   popd
   exit /b 1

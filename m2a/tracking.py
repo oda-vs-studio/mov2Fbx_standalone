@@ -15,7 +15,7 @@ from .runtime import Model
 class PersonDetector:
     def __init__(self, models, provider, min_height=.18):
         if not (Path(models)/'yolox_s.onnx').is_file():
-            raise FileNotFoundError('Run SetupPersonDetection.bat to install the person detector')
+            raise FileNotFoundError('Run SetupMovie2Anim.bat to install the person detector')
         self.model=Model(models,'yolox_s',provider)
         self.size=640
         self.min_height=min_height

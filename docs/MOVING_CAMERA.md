@@ -4,9 +4,8 @@
 
 ## Windowsセットアップ
 
-1. 通常の `SetupStandalone.bat` を完了する。
-2. NVIDIA GPUと対応ドライバを用意し、`SetupCamera.bat` を実行する。
-3. `DropVideoToQuinnFBX_MovingCamera.bat` に動画をドロップする。
+1. NVIDIA GPUと対応ドライバを用意し、`SetupMovie2Anim.bat` を実行する。
+2. `DropVideoToMovie2Anim.bat` に動画をドロップする。
 
 初回はネット接続、Git、起動用Pythonが必要です。PythonはPATHの `python`、または `M2A_PYTHON` で指定します。カメラ専用のPython 3.12はuvが自動調達します。通常推論はローカルの重みを読み、UEやネット接続を必要としません。
 
@@ -27,7 +26,7 @@ RTX 5090（Blackwell）対応のためCUDA 12.8版の公式Windows wheelを使�
 
 ソースcommitは `tools/setup_camera.py` に固定しています。DA3の取得revisionとSHA256、GeoCalibのURLとSHA256は `models/camera/*.json` に保存します。既存の重みはハッシュ確認して再利用し、異なる重みは上書きしません。実環境の全依存一覧は `work/camera_environment.lock` に保存します。巨大な重み、ソースコピー、venv、中間結果はGitに含みません。
 
-`SetupCamera.bat --model DA3-GIANT` などで別モデルを取得できます。実行時も `--camera-model DA3-GIANT` を指定してください。既定はDA3-LARGEです。Nestedの出力も体格との共通尺度を合わせます。
+`SetupMovie2Anim.bat --camera-model DA3-GIANT` などで別モデルを取得できます。実行時も `--camera-model DA3-GIANT` を指定してください。既定はDA3-LARGEです。Nestedの出力も体格との共通尺度を合わせます。
 
 ## 処理と出力
 
@@ -71,7 +70,7 @@ FBX名・保存先・上書き禁止は通常BATと共通です。失敗時も�
 
 走行サンプルは推定上の上下範囲6.19m、最大ルート速度15.20m/sとなり、平地の走行として確認が必要です。`scene.json` の `quality_warnings` と `motion_diagnostics`、CLIの `QUALITY REVIEW` で異常候補を明示します。歩行の上下範囲は約0.19mです。いずれも推定尺度であり、実測メートルの精度検証ではありません。
 
-背景のPnP再投影誤差中央値は歩行0.10px、走行0.47px（縮小画像上）。同じ背景点を使った内部残差であり、低い値だけで人体やカメラの正確さを保証しません。全24テストとSetupCamera.batの再実行を確認済みです。走行精度を改善するには、重力・床・人体とカメラの共同制約、Hue内部のカメラ運動条件の扱いを追加検証する必要があります。
+背景のPnP再投影誤差中央値は歩行0.10px、走行0.47px（縮小画像上）。同じ背景点を使った内部残差であり、低い値だけで人体やカメラの正確さを保証しません。全24テストとSetupMovie2Anim.batの再実行を確認済みです。走行精度を改善するには、重力・床・人体とカメラの共同制約、Hue内部のカメラ運動条件の扱いを追加検証する必要があります。
 
 
 ## 過去の全長一括出力の判定（部分出力導入前）
@@ -123,6 +122,8 @@ parkor.mp4 全328フレームを探索し、0..71（72フレーム）と72..319�
 
 `SetupMovie2Anim.bat` は人体セットアップの後にカメラセットアップを順次実行します。UEフォルダ選択、人体用venv、UEモデル取得・既存モデルのハッシュ確認、FBXツールのビルド、検出モデル、カメラ用venv、CUDA Torch、GeoCalibとDA3-LARGEまでが対象です。初期条件と引数はREADMEを参照してください。既存モデル・実行結果は削除しません。GPUモデルを含む一括セットアップの再実行を確認済みです（work/setup_all_validation.log）。新規PCそのものでは未検証です。
 
-`DropVideoToMovie2Anim.bat` または `DropVideoToQuinnFBX_MovingCamera.bat` に動画をドロップすると、元動画の隣に `動画名_Movie2Anim_日時_ID/` を新規作成します。全成功区間のFBXとJSON・区間一覧を直下、カメラ・人体の中間結果とプレビュー・エラー詳細を `_work/` に保存します。繰り返し実行しても別フォルダになります。複数動画は動画ごとに保存します。初期接地を仮定しない場合は `--no-tilt-correction` を追加できます。
+`DropVideoToMovie2Anim.bat` に動画をドロップすると、元動画の隣に `動画名_Movie2Anim_日時_ID/` を新規作成します。全成功区間のFBXとJSON・区間一覧を直下、カメラ・人体の中間結果とプレビュー・エラー詳細を `_work/` に保存します。繰り返し実行しても別フォルダになります。複数動画は動画ごとに保存します。初期接地を仮定しない場合は `--no-tilt-correction` を追加できます。
 
 再ドロップの保存先分離とセットアップの引数・異常終了を含む33テスト成功（work/packaging_tests.log）。
+
+カメラ用Python本体は runtime-camera/python/ に配置します。既存venvがユーザー配下のuv管理Pythonを参照している場合は、一括セットアップ時に同じバージョンの本体をプロジェクト内へコピーし、pyvenv.cfgをバックアップして参照先を切り替えます。モデルとインストール済みパッケージは保持します。2026-09-07に既存環境の参照を修復し、CUDAとカメラライブラリの起動を確認しました。

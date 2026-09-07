@@ -31,7 +31,7 @@ Image_to_Mesh setup deletes its venv and pins torch 2.6/cu126. Reuse neither beh
 
 実験モードの実装とセットアップは完了。上のチェックは実装・試験の実施を示し、すべての動画の精度合格を意味しない。
 
-- SetupCamera.batの実行成功。Windows RTX 5090 / driver 591.86 / Python 3.12.14 / torch 2.7.1+cu128 / NumPy 1.26.4でCUDA演算を確認。
+- SetupMovie2Anim.batの実行成功。Windows RTX 5090 / driver 591.86 / Python 3.12.14 / torch 2.7.1+cu128 / NumPy 1.26.4でCUDA演算を確認。
 - DA3-LARGE revision c54c26b16ec04d218e8d584ecf4bce082a9fcc20、GeoCalib distortedを取得・ハッシュ検証。既存の人体環境とUE由来モデルを保持。
 - カメラはDA3深度と姿勢初期値を使った固定Kの背景VOへ変更。独立したフレーム別PnPの揺れを抑え、重複区間の深度尺度と最後の共通姿勢で窓を接続。
 - 歩行273フレーム、走行299フレームを全長出力。既存の二人動画16フレームで両者を同時範囲に出力。すべてFBX SDK再読込のローカル行列誤差0。
@@ -105,6 +105,6 @@ parkor.mp4 全328フレームを探索し、0..71（72フレーム）と72..319�
 
 `SetupMovie2Anim.bat` は人体セットアップの後にカメラセットアップを順次実行します。UEフォルダ選択、人体用venv、UEモデル取得・既存モデルのハッシュ確認、FBXツールのビルド、検出モデル、カメラ用venv、CUDA Torch、GeoCalibとDA3-LARGEまでが対象です。初期条件と引数はREADMEを参照してください。既存モデル・実行結果は削除しません。GPUモデルを含む一括セットアップの再実行を確認済みです（work/setup_all_validation.log）。新規PCそのものでは未検証です。
 
-`DropVideoToMovie2Anim.bat` または `DropVideoToQuinnFBX_MovingCamera.bat` に動画をドロップすると、元動画の隣に `動画名_Movie2Anim_日時_ID/` を新規作成します。全成功区間のFBXとJSON・区間一覧を直下、カメラ・人体の中間結果とプレビュー・エラー詳細を `_work/` に保存します。繰り返し実行しても別フォルダになります。複数動画は動画ごとに保存します。初期接地を仮定しない場合は `--no-tilt-correction` を追加できます。
+`DropVideoToMovie2Anim.bat` に動画をドロップすると、元動画の隣に `動画名_Movie2Anim_日時_ID/` を新規作成します。全成功区間のFBXとJSON・区間一覧を直下、カメラ・人体の中間結果とプレビュー・エラー詳細を `_work/` に保存します。繰り返し実行しても別フォルダになります。複数動画は動画ごとに保存します。初期接地を仮定しない場合は `--no-tilt-correction` を追加できます。
 
 再ドロップの保存先分離とセットアップの引数・異常終了を含む33テスト成功（work/packaging_tests.log）。

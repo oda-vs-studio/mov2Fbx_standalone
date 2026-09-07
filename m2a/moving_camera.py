@@ -12,7 +12,7 @@ from .retarget import ROOT, align_vector
 
 def worker(stage, output, video=None, model='DA3-LARGE'):
     python=ROOT/'.venv-camera/Scripts/python.exe'
-    if not python.exists(): raise FileNotFoundError('Run SetupCamera.bat first')
+    if not python.exists(): raise FileNotFoundError('Run SetupMovie2Anim.bat first')
     args=[str(python),'-u','-m','tools.camera_worker',stage,'--output',str(output),'--model',model]
     if video is not None:args+=['--video',str(video)]
     env=os.environ.copy();env.update(PYTHONUTF8='1',OMP_NUM_THREADS='8',OPENBLAS_NUM_THREADS='8',MKL_NUM_THREADS='8')

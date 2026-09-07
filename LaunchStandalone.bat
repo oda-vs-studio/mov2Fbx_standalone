@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if not exist ".venv\Scripts\pythonw.exe" (
-  echo Run SetupStandalone.bat first.
+  echo Run SetupMovie2Anim.bat first.
   pause
   exit /b 1
 )

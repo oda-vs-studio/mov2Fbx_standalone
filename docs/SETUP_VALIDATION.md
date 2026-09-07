@@ -1,6 +1,6 @@
 # Setup validation
 
-A fresh copy containing only source/configuration/docs and the three bundled Quinn assets was created without .venv, bin, inference models or run outputs. SetupStandalone.bat --engine <UE 5.8.2> --noninteractive completed:
+A fresh copy containing only source/configuration/docs and the three bundled Quinn assets was created without .venv, bin, inference models or run outputs. The body-only setup (now available as python -m tools.bootstrap_setup --engine <UE 5.8.2> --noninteractive) completed:
 
 - Created a Python 3.13 x64 virtual environment and installed requirements.lock.txt.
 - Extracted all seven UE ONNX models, external data, and SMPL-X joint data.
