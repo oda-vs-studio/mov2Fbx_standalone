@@ -59,6 +59,7 @@ def main():
     parser.add_argument('--provider',choices=['dml','cpu'],default='dml')
     parser.add_argument('--no-tilt-correction',action='store_true',help='Keep camera-only orientation when the initial feet are not planted')
     parser.add_argument('--moving-camera',action='store_true')
+    parser.add_argument('--actor-mode',choices=['primary','all'],default='all',help='primary: animate the most consistently observed actor; all: include every accepted actor')
     parser.add_argument('--output-folder',action='store_true',help='Create a unique result folder beside each video, including intermediate work')
     parser.add_argument('--camera-model',default='DA3-LARGE',choices=['DA3-LARGE','DA3-GIANT','DA3NESTED-GIANT-LARGE'])
     parser.add_argument('--export-run',type=Path,help='Recover an existing run into a new short-named output folder without inference')
@@ -97,7 +98,7 @@ def main():
             else:
                 run=ROOT/'runs/drop'/token
             print(f'\nInput: {video}\nOutput: {dest}\nWork: {run}',flush=True)
-            report=solve_auto(video,run,ROOT/'models',provider=args.provider,correct_tilt=not args.no_tilt_correction,moving_camera=args.moving_camera,camera_model=args.camera_model,log=lambda s:print(s,flush=True))
+            report=solve_auto(video,run,ROOT/'models',provider=args.provider,correct_tilt=not args.no_tilt_correction,moving_camera=args.moving_camera,camera_model=args.camera_model,actor_mode=args.actor_mode,log=lambda s:print(s,flush=True))
             publish_result(run,report,dest)
         except Exception:
             failed=True

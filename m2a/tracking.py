@@ -61,6 +61,29 @@ def appearance(frame,box):
     return hist/(hist.sum()+1e-8)
 
 
+def select_actor_tracks(tracks, mode='all'):
+    """Select body subjects without changing the tracks used to mask the camera.
+
+    Primary means the most frequently observed track, with median observed box
+    area as a tie breaker. Selection is clip-wide: never switch IDs per frame or
+    fill a long absence with a different person.
+    """
+    if mode not in {'all', 'primary'}:
+        raise ValueError(f'Unknown actor mode: {mode}')
+    if mode == 'all':
+        return tracks
+    if not tracks:
+        raise ValueError('No tracked actor available for primary selection')
+
+    def rank(track):
+        observed = np.asarray(track['observed'], dtype=bool)
+        boxes = track['boxes'][observed]
+        area = np.prod(np.maximum(0, boxes[:, 2:] - boxes[:, :2]), axis=1)
+        return int(observed.sum()), float(np.median(area)) if len(area) else 0.
+
+    return [max(tracks, key=rank)]
+
+
 class Tracker:
     def __init__(self,max_gap=12):
         self.tracks=[];self.max_gap=max_gap

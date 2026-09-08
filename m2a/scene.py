@@ -190,9 +190,10 @@ def export_scene(runs,output,correct_tilt=True,initial_seconds=.2,camera_dir=Non
     return report
 
 
-def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,moving_camera=False,camera_model='DA3-LARGE'):
+def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,moving_camera=False,camera_model='DA3-LARGE',actor_mode='all'):
     from .pipeline import read_frames,calibrate,solve
-    from .tracking import detect_tracks
+    from .tracking import detect_tracks,select_actor_tracks
+    if actor_mode not in {'all','primary'}:raise ValueError(f'Unknown actor mode: {actor_mode}')
     output=Path(output)
     if output.exists():raise FileExistsError(f'Run exists: {output}')
     output.mkdir(parents=True)
@@ -211,6 +212,14 @@ def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,mo
     else:
         camera=calibrate(frames[0],models,provider)
         del frames
+    all_tracks=tracks
+    tracks=select_actor_tracks(all_tracks,actor_mode)
+    selection=dict(mode=actor_mode,selected_track_ids=[t['id'] for t in tracks],
+        excluded_track_ids=[t['id'] for t in all_tracks if not any(t is selected for selected in tracks)],
+        method='most observed frames, then median observed box area' if actor_mode=='primary' else 'all tracked actors',
+        camera_mask_uses_all_tracks=bool(moving_camera))
+    (output/'actor_selection.json').write_text(json.dumps(selection,indent=2),encoding='utf-8')
+    log(f"Body actor selection ({actor_mode}): IDs {selection['selected_track_ids']}")
     camera_status=json.loads((camera_dir/'camera_report.json').read_text()) if moving_camera else None
     if camera_status and 'segments' in camera_status:
         from .track_intervals import prepare_intervals
@@ -223,7 +232,7 @@ def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,mo
             try:
                 result=solve_range(video,folder,models,provider,camera,[tracks[i] for i in segment.get('track_indices',range(len(tracks)))],first,last,
                     camera_dir/segment['camera_dir'],correct_tilt,log)
-                result.update(source_start_frame=first,source_end_frame_inclusive=last-1,
+                result.update(actor_selection=selection,source_start_frame=first,source_end_frame_inclusive=last-1,
                     input_frames=camera_status['input_frames'],partial=camera_status['partial'])
                 (folder/'scene.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
                 exports.append(dict(directory=str(folder.relative_to(output)),start=first,end=last,people_count=result['people_count']))
@@ -232,7 +241,7 @@ def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,mo
                 (folder/'ERROR.txt').write_text(traceback.format_exc(),encoding='utf-8')
                 errors.append(dict(start=first,end=last,reason=str(exc)))
                 log(f'SEGMENT FAILED {first}..{last-1}: {exc}; continuing')
-        manifest=dict(partial=camera_status['partial'] or bool(errors),exports=exports,
+        manifest=dict(actor_selection=selection,partial=camera_status['partial'] or bool(errors),exports=exports,
             input_frames=camera_status['input_frames'],camera_skipped_ranges=camera_status['skipped_ranges'],
             camera_failures=camera_status['failures'],tracking_skipped_ranges=tracking_skips,segment_errors=errors,
             independent_world_origins=camera_status['partial'])
@@ -253,6 +262,7 @@ def solve_auto(video,output,models,provider='dml',correct_tilt=True,log=print,mo
             (run/'metadata.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
         runs.append(run)
     report=export_scene(runs,output,correct_tilt,camera_dir=camera_dir)
+    report['actor_selection']=selection
     if camera_status is not None:
         report['partial']=camera_status['partial']
         report['source_start_frame']=0

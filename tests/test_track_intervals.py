@@ -2,11 +2,42 @@ from pathlib import Path
 import tempfile
 import unittest
 import numpy as np
-from m2a.tracking import Tracker
+from m2a.tracking import Tracker,select_actor_tracks
 from m2a.track_intervals import partition_tracks,prepare_intervals
 
 
 class TrackIntervalTests(unittest.TestCase):
+    def actor(self, ident, n, first, last, size=20):
+        valid=np.zeros(n,dtype=bool);valid[first:last]=True
+        return dict(id=ident,valid=valid,observed=valid.copy(),
+            boxes=np.tile([0.,0.,size,size*2],(n,1)))
+
+    def test_primary_ignores_late_bystanders_without_losing_tail(self):
+        tracks=[self.actor(1,581,0,581),self.actor(3,581,468,518,40),self.actor(5,581,547,574,40)]
+        tracks[0]['observed'][100:109]=False
+        selected=select_actor_tracks(tracks,'primary')
+        self.assertIs(selected[0],tracks[0])
+        intervals,skips=partition_tracks(selected,0,581)
+        self.assertEqual([(i['start'],i['end']) for i in intervals],[(0,581)])
+        self.assertEqual(skips,[])
+        self.assertEqual(len(tracks),3)  # Camera subjects are preserved.
+
+    def test_primary_preserves_real_absence_and_does_not_switch_to_bystander(self):
+        primary=self.actor(1,100,0,100)
+        primary['valid'][40:60]=False;primary['observed'][40:60]=False
+        tracks=[primary,self.actor(2,100,30,70)]
+        intervals,skips=partition_tracks(select_actor_tracks(tracks,'primary'),0,100)
+        self.assertEqual([(i['start'],i['end']) for i in intervals],[(0,40),(60,100)])
+        self.assertEqual([(i['start'],i['end']) for i in skips],[(40,60)])
+
+    def test_equal_observation_count_prefers_larger_actor_and_all_keeps_pair(self):
+        tracks=[self.actor(7,24,0,24,10),self.actor(9,24,0,24,30)]
+        self.assertEqual(select_actor_tracks(tracks,'primary')[0]['id'],9)
+        self.assertIs(select_actor_tracks(tracks,'all'),tracks)
+        intervals,skips=partition_tracks(select_actor_tracks(tracks,'all'),0,24)
+        self.assertEqual(intervals,[dict(start=0,end=24,track_indices=[0,1])])
+        self.assertEqual(skips,[])
+
     def test_late_entry_and_long_absence_are_not_extrapolated(self):
         tracker=Tracker(max_gap=3)
         frames=list(range(10,30))+list(range(60,80))
